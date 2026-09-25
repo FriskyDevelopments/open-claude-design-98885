@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { SupportFooterStrip, SupportRailCompact } from "@/components/SupportRail";
 
@@ -8,14 +8,19 @@ import { SupportFooterStrip, SupportRailCompact } from "@/components/SupportRail
 //        and proxied by netlify/functions/chat.ts (dumb forwarder) to Anthropic/OpenAI/OpenRouter.
 type ByokKeys = { anthropic: string; openai: string; openrouter: string };
 const STORAGE_KEY = "open-claude-design:keys";
+const emptyKeys: ByokKeys = { anthropic: "", openai: "", openrouter: "" };
+const subscribeToNothing = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
 function useByok() {
-  const [keys, setKeys] = useState<ByokKeys>({ anthropic: "", openai: "", openrouter: "" });
-  useEffect(() => {
+  const [keys, setKeys] = useState<ByokKeys>(() => {
+    if (typeof window === "undefined") return emptyKeys;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setKeys(JSON.parse(raw));
+      return raw ? JSON.parse(raw) : emptyKeys;
     } catch {}
-  }, []);
+    return emptyKeys;
+  });
   const save = (n: ByokKeys) => {
     setKeys(n);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(n));
@@ -23,10 +28,8 @@ function useByok() {
   return { keys, save, hasKey: Boolean(keys.anthropic || keys.openai || keys.openrouter) };
 }
 
-function ByokModal({ open, onClose, keys, onSave }: { open: boolean; onClose: () => void; keys: ByokKeys; onSave: (k: ByokKeys) => void }) {
+function ByokModal({ onClose, keys, onSave }: { onClose: () => void; keys: ByokKeys; onSave: (k: ByokKeys) => void }) {
   const [draft, setDraft] = useState(keys);
-  useEffect(() => setDraft(keys), [keys]);
-  if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-md">
       <div className="w-full max-w-[560px] rounded-[22px] border-2 border-white bg-[#191424] p-6 shadow-[0_16px_0_rgba(0,0,0,.5),0_22px_48px_rgba(0,0,0,.5)] sm:p-7">
@@ -327,9 +330,11 @@ function ProjectCard({ title, subtitle }: { title: string; subtitle: string }) {
 }
 
 export default function Page() {
+  const ready = useSyncExternalStore(subscribeToNothing, clientSnapshot, serverSnapshot);
   const { keys, save, hasKey } = useByok();
   const [byokOpen, setByokOpen] = useState(false);
   const [tab, setTab] = useState<"disenos" | "sistemas">("disenos");
+  if (!ready) return null;
   return (
     <div className="min-h-screen p-0 sm:p-3">
       <div className="mx-auto flex min-h-screen w-full max-w-[1680px] overflow-hidden rounded-none border-white/10 bg-black/40 backdrop-blur-sm sm:min-h-[calc(100vh-24px)] sm:rounded-[22px] sm:border-2">
@@ -540,7 +545,7 @@ export default function Page() {
           </div>
         </main>
       </div>
-      <ByokModal open={byokOpen} onClose={() => setByokOpen(false)} keys={keys} onSave={save} />
+      {byokOpen && <ByokModal onClose={() => setByokOpen(false)} keys={keys} onSave={save} />}
     </div>
   );
 }
