@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 
 type ApiKeyRecord = {
@@ -17,6 +17,9 @@ type ApiKeyRecord = {
 const ADMIN_AUTH_KEY = "open-claude-design:owner-auth";
 const ADMIN_KEYS_KEY = "open-claude-design:admin-keys";
 const OWNER_PASSWORD = "pupfrisky-owner";
+const subscribeToNothing = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
 
 const TOOL_SCOPES = [
   { id: "frisky.mcp", label: "frisky.mcp — all tools" },
@@ -35,24 +38,22 @@ function makeKey(): { prefix: string; secret: string; display: string } {
 }
 
 export default function AdminPage() {
-  const [authed, setAuthed] = useState(false);
+  const ready = useSyncExternalStore(subscribeToNothing, clientSnapshot, serverSnapshot);
+  const [authed, setAuthed] = useState(() => typeof window !== "undefined" && localStorage.getItem(ADMIN_AUTH_KEY) === "true");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
-  const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
+  const [keys, setKeys] = useState<ApiKeyRecord[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(ADMIN_KEYS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
   const [newName, setNewName] = useState("MVP — open-claude-design");
   const [newScopes, setNewScopes] = useState<string[]>(["frisky.mcp"]);
   const [newExpiry, setNewExpiry] = useState<"30d" | "90d" | "never">("30d");
   const [justCreated, setJustCreated] = useState<ApiKeyRecord | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const a = localStorage.getItem(ADMIN_AUTH_KEY);
-      if (a === "true") setAuthed(true);
-      const raw = localStorage.getItem(ADMIN_KEYS_KEY);
-      if (raw) setKeys(JSON.parse(raw));
-    } catch {}
-  }, []);
 
   const persistKeys = (next: ApiKeyRecord[]) => {
     setKeys(next);
@@ -100,6 +101,8 @@ export default function AdminPage() {
     setCopied(id);
     setTimeout(() => setCopied(null), 1600);
   };
+
+  if (!ready) return null;
 
   if (!authed) {
     return (
